@@ -1,6 +1,7 @@
 import json
 import os
 from collections import Counter
+from pathlib import Path
 
 
 def kata_to_hira(text):
@@ -8,6 +9,7 @@ def kata_to_hira(text):
         chr(ord(c) - 0x60) if 'ァ' <= c <= 'ン' else c
         for c in text
     )
+
 
 
 def hira_to_kata(text):
@@ -66,7 +68,6 @@ def kana_resolve_return(mode, all_hits, match_ids, search_terms, word_mecab):
             for hit_version in hit:
                 resolve_all_hit_ids.add(hit_version["id"])
     # Compare hit ids to kanji matches.
-    print(f"Tie-breaker ids:{sorted(match_ids)}\nKana matches:{sorted(resolve_all_hit_ids)}\nIntersect:{match_ids.intersection(resolve_all_hit_ids)}")
     tiebreaker_matches= match_ids.intersection(resolve_all_hit_ids)
     if len(tiebreaker_matches) == 1:
         return get_return_body(all_hits, tiebreaker_matches)
@@ -130,7 +131,8 @@ def process_word_candidate(jmdict_index:dict, sent_en:str, word_mecab:dict, stat
         # Only hit
         if len(all_hits) == 1:
             stats.one_hit += 1
-            return True, all_hits[0]
+            return get_return_body(all_hits, {all_hits[0]["hit"]["id"]})
+
 
         # Tie braking logic
         all_exact_term_common = set()
@@ -249,15 +251,18 @@ def process_sentences(jmdict_index:dict, sent_entry: dict, stats:Stats):
 
 
 if __name__ == '__main__':
+    unresolved_count = 0
     from uuid import uuid4
     out_f_name = f"word_processor_out_{uuid4()}.jsonl"
-
+    # f_unresolved = open("word_processor_unresolved.jsonl", 'w', encoding='utf-8')
+    f_unresolved_dir = "unresolved_cases/"
+    os.makedirs(f_unresolved_dir, exist_ok=True)
     stats = Stats()
     jmdict_index = json.load(open("jmdict_by_key.json", mode='r'))
     files = []
     for file in os.listdir("./jish_mecab"):
         if file.startswith("jish_sent_with_mecab_"):
-            files.append(file)
+            files.append(Path("jish_mecab", file))
 
     x = 0
     for file in files:
@@ -281,11 +286,20 @@ if __name__ == '__main__':
                 "file": sent_dict["file"],
                 "mecab": new_mecab,
                 "confident_hits": confident_hits,
-                "unresolved_hits": unresolved_hits
+                "unresolved_hits": unresolved_hits,
+                "p_candidates": sent_dict["p_candidates"]
             }
+
+            for unresolved in unresolved_hits:
+                f = open(os.path.join(f_unresolved_dir, f"{unresolved_count}.json"), 'w')
+
+                f.write(json.dumps(unresolved, ensure_ascii=False))
+                unresolved_count += 1
+
+
 
             with open(out_f_name, "a", encoding="utf-8") as f:
                 json.dump(new_dict, f, ensure_ascii=False)
                 f.write("\n")
-    stats.print()
 
+    print(f"UNRESOLVED COUNT:{unresolved_count}")
